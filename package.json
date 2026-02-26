@@ -1,0 +1,48 @@
+{
+  "name": "nfc-bridge-server",
+  "version": "1.0.0",
+  "description": "Local bridge server to connect ACR122U NFC readers to the VersaTalent web application",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsx watch src/index.ts",
+    "clean": "rm -rf dist releases",
+    "build:pkg:win": "pkg dist/index.js --targets node18-win-x64 --output releases/nfc-bridge-win-x64.exe --config package.json",
+    "build:pkg:mac": "pkg dist/index.js --targets node18-macos-x64 --output releases/nfc-bridge-macos-x64 --config package.json",
+    "build:pkg:mac-arm": "pkg dist/index.js --targets node18-macos-arm64 --output releases/nfc-bridge-macos-arm64 --config package.json",
+    "build:pkg:linux": "pkg dist/index.js --targets node18-linux-x64 --output releases/nfc-bridge-linux-x64 --config package.json",
+    "build:pkg:linux-arm": "pkg dist/index.js --targets node18-linux-arm64 --output releases/nfc-bridge-linux-arm64 --config package.json",
+    "build:pkg:all": "npm run build && mkdir -p releases && npm run build:pkg:win && npm run build:pkg:mac && npm run build:pkg:mac-arm && npm run build:pkg:linux && npm run build:pkg:linux-arm",
+    "release": "npm run clean && npm run build:pkg:all"
+  },
+  "bin": "dist/index.js",
+  "pkg": {
+    "scripts": "dist/**/*.js",
+    "assets": ["certs/.gitkeep"],
+    "targets": ["node18-win-x64", "node18-macos-x64", "node18-macos-arm64", "node18-linux-x64", "node18-linux-arm64"],
+    "outputPath": "releases"
+  },
+  "author": "VersaTalent",
+  "license": "MIT",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.18.2",
+    "ws": "^8.16.0"
+  },
+  "optionalDependencies": {
+    "pcsclite": "^1.0.1"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.11.0",
+    "@types/ws": "^8.5.10",
+    "pkg": "^5.8.1",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.3"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
