@@ -37,11 +37,14 @@ jobs:
           node-version: 18
           cache: npm
 
-      - name: Install PC/SC headers (Linux)
+      - name: Install PC/SC (Linux)
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libpcsclite-dev
+        run: |
+          sudo apt-get update && sudo apt-get install -y libpcsclite-dev pcscd
+          sudo systemctl start pcscd.socket || sudo pcscd
 
-      - run: npm ci
+      # --foreground-scripts shows the native pcsclite build output
+      - run: npm ci --foreground-scripts
       - run: npm run build
 
       - name: Package

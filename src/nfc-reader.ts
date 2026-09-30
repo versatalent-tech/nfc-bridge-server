@@ -11,26 +11,45 @@ export class NFCReader extends EventEmitter {
   private lastUID: string | null = null;
   private isInitialized = false;
 
+  private retryTimer: NodeJS.Timeout | null = null;
+
   async initialize(): Promise<void> {
     if (this.isInitialized) return;
 
+    let pcsclite: any;
     try {
-      const pcsclite = await import("pcsclite");
-      this.pcsc = pcsclite.default();
-      logger.info("PC/SC initialized", "NFC");
-
-      this.pcsc.on("reader", (reader: any) => this.handleReader(reader));
-      this.pcsc.on("error", (err: Error) => this.emit("error", err));
+      pcsclite = (await import("@pokusew/pcsclite")).default;
+    } catch (err: any) {
+      // Native module missing or built for another platform/Node version
+      logger.warn(`pcsclite not available - running in WebSocket-only mode (cards will NOT be read): ${err.message}`, "NFC");
       this.isInitialized = true;
       this.emit("ready");
+      return;
+    }
+
+    this.isInitialized = true;
+    this.connectPCSC(pcsclite);
+    this.emit("ready");
+  }
+
+  /**
+   * Connect to the system smart card service. If it isn't running yet
+   * (pcscd on Linux, "Smart Card" service on Windows), keep the bridge up
+   * and retry, so starting the service or plugging in a reader later works.
+   */
+  private connectPCSC(pcsclite: () => any) {
+    try {
+      this.pcsc = pcsclite();
+      logger.info("PC/SC initialized", "NFC");
+      this.pcsc.on("reader", (reader: any) => this.handleReader(reader));
+      this.pcsc.on("error", (err: Error) => this.emit("error", err));
     } catch (err: any) {
-      if (err.message?.includes("Cannot find module") || err.message?.includes("bindings") || err.message?.includes("NODE_MODULE_VERSION")) {
-        logger.warn(`pcsclite not available - running in WebSocket-only mode (cards will NOT be read): ${err.message}`, "NFC");
-        this.isInitialized = true;
-        this.emit("ready");
-        return;
-      }
-      throw err;
+      logger.warn(
+        `Smart card service not available (${err.message}). ` +
+        "On Linux run: sudo systemctl start pcscd. On Windows, start the \"Smart Card\" service. Retrying in 5s...",
+        "NFC"
+      );
+      this.retryTimer = setTimeout(() => this.connectPCSC(pcsclite), 5000);
     }
   }
 
@@ -85,6 +104,7 @@ export class NFCReader extends EventEmitter {
   }
 
   shutdown() {
+    if (this.retryTimer) clearTimeout(this.retryTimer);
     if (this.reader) try { this.reader.close(); } catch {}
     if (this.pcsc) try { this.pcsc.close(); } catch {}
     this.isInitialized = false;

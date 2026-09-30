@@ -19,19 +19,25 @@
   "bin": "dist/index.js",
   "pkg": {
     "scripts": "dist/**/*.js",
-    "assets": ["certs/.gitkeep"],
-    "targets": ["node18-win-x64", "node18-macos-x64", "node18-macos-arm64", "node18-linux-x64", "node18-linux-arm64"],
+    "assets": [
+      "certs/.gitkeep"
+    ],
+    "targets": [
+      "node18-win-x64",
+      "node18-macos-x64",
+      "node18-macos-arm64",
+      "node18-linux-x64",
+      "node18-linux-arm64"
+    ],
     "outputPath": "releases"
   },
   "author": "VersaTalent",
   "license": "MIT",
   "dependencies": {
+    "@pokusew/pcsclite": "^0.6.0",
     "cors": "^2.8.5",
     "express": "^4.18.2",
     "ws": "^8.16.0"
-  },
-  "optionalDependencies": {
-    "pcsclite": "^1.0.1"
   },
   "devDependencies": {
     "@types/cors": "^2.8.17",
