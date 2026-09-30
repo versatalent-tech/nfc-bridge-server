@@ -22,7 +22,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { os: windows-latest,   target: node18-win-x64,     file: nfc-bridge-win-x64.exe }
+          # windows-2022: node-gyp bundled with Node 18 can't detect the newer Visual Studio on windows-latest
+          - { os: windows-2022,     target: node18-win-x64,     file: nfc-bridge-win-x64.exe }
           - { os: macos-15-intel,   target: node18-macos-x64,   file: nfc-bridge-macos-x64 }
           - { os: macos-latest,     target: node18-macos-arm64, file: nfc-bridge-macos-arm64 }
           - { os: ubuntu-latest,    target: node18-linux-x64,   file: nfc-bridge-linux-x64 }
