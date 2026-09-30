@@ -66,6 +66,14 @@ jobs:
             echo "Native pcsclite module failed to load - cards would not be read"
             exit 1
           fi
+          # The native module must have loaded and reached the smart card service
+          # (a missing service on CI is fine: the bridge keeps retrying)
+          for i in $(seq 1 15); do
+            grep -qE "PC/SC initialized|Smart card service not available" bridge.log && break
+            sleep 1
+          done
+          cat bridge.log
+          grep -qE "PC/SC initialized|Smart card service not available" bridge.log || { echo "Card reader support never initialised"; exit 1; }
 
       - uses: actions/upload-artifact@v4
         with:
