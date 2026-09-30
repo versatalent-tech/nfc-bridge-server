@@ -26,7 +26,7 @@ export class BridgeServer {
     });
     this.app.use(cors({ origin: (origin, callback) => callback(null, !origin || isAllowedOrigin(origin)) }));
     this.app.use(express.json());
-    this.app.get("/health", (_, res) => res.json({ status: "ok", version: "1.0.0", reader: nfcReader.getInfo(), clients: this.clients.size }));
+    this.app.get("/health", (_, res) => res.json({ status: "ok", version: "1.0.1", reader: nfcReader.getInfo(), clients: this.clients.size }));
     this.app.get("/", (_, res) => res.send(`<h1>NFC Bridge Server</h1><p>Reader: ${nfcReader.getInfo().connected ? nfcReader.getInfo().name : "Not connected"}</p><p>Clients: ${this.clients.size}</p>`));
   }
 

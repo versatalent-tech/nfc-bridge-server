@@ -50,7 +50,8 @@ jobs:
 
       - name: Package
         shell: bash
-        run: npx pkg dist/index.js --targets ${{ matrix.target }} --output releases/${{ matrix.file }}
+        # "pkg ." reads the pkg config in package.json, which bundles the native pcsclite.node
+        run: npx pkg . --targets ${{ matrix.target }} --output releases/${{ matrix.file }}
 
       # On a real PC the Smart Card service starts when a reader is plugged in;
       # CI has no reader, so start it explicitly
@@ -67,7 +68,13 @@ jobs:
         shell: bash
         timeout-minutes: 5
         run: |
-          ./releases/${{ matrix.file }} > bridge.log 2>&1 &
+          # Run from an empty folder outside the checkout, like a downloaded copy, so the
+          # binary can't fall back to files in node_modules
+          SMOKE_DIR="$RUNNER_TEMP/smoke"
+          mkdir -p "$SMOKE_DIR"
+          cp releases/${{ matrix.file }} "$SMOKE_DIR/"
+          cd "$SMOKE_DIR"
+          ./${{ matrix.file }} > bridge.log 2>&1 &
           BRIDGE_PID=$!
           # Always stop the bridge; on Windows a leftover background process keeps the step open
           cleanup() {
