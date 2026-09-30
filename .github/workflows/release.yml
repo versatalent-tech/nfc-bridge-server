@@ -1,0 +1,89 @@
+name: Release
+
+# Builds standalone binaries for every platform and publishes them as a GitHub
+# release. The VersaTalent admin (Admin > NFC > Setup) links to
+# releases/latest/download/<file>, so file names must not change.
+#
+# Release: git tag v1.2.3 && git push origin v1.2.3
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: ${{ matrix.file }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: windows-latest,   target: node18-win-x64,     file: nfc-bridge-win-x64.exe }
+          - { os: macos-15-intel,   target: node18-macos-x64,   file: nfc-bridge-macos-x64 }
+          - { os: macos-latest,     target: node18-macos-arm64, file: nfc-bridge-macos-arm64 }
+          - { os: ubuntu-latest,    target: node18-linux-x64,   file: nfc-bridge-linux-x64 }
+          - { os: ubuntu-24.04-arm, target: node18-linux-arm64, file: nfc-bridge-linux-arm64 }
+    steps:
+      - uses: actions/checkout@v4
+
+      # pkg bundles a Node 18 runtime, so the native pcsclite module must be
+      # compiled against Node 18 on the target platform itself
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: npm
+
+      - name: Install PC/SC headers (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libpcsclite-dev
+
+      - run: npm ci
+      - run: npm run build
+
+      - name: Package
+        shell: bash
+        run: npx pkg dist/index.js --targets ${{ matrix.target }} --output releases/${{ matrix.file }}
+
+      - name: Smoke test
+        shell: bash
+        run: |
+          ./releases/${{ matrix.file }} > bridge.log 2>&1 &
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:9876/health && break
+            sleep 1
+          done
+          cat bridge.log
+          curl -sf http://localhost:9876/health > /dev/null || { echo "Bridge did not answer /health"; exit 1; }
+          if grep -q "WebSocket-only mode" bridge.log; then
+            echo "Native pcsclite module failed to load - cards would not be read"
+            exit 1
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.file }}
+          path: releases/${{ matrix.file }}
+          if-no-files-found: error
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: releases
+          merge-multiple: true
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ls -la releases
+          gh release create "${GITHUB_REF_NAME}" releases/* \
+            --repo "${GITHUB_REPOSITORY}" \
+            --title "NFC Bridge ${GITHUB_REF_NAME}" \
+            --generate-notes

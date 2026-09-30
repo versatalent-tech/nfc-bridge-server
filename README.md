@@ -48,7 +48,10 @@ chmod +x nfc-bridge-macos-arm64  # or macos-x64
 ./nfc-bridge-macos-arm64
 ```
 
-Note: macOS may show a security warning. Go to System Preferences > Security & Privacy to allow the app.
+The app isn't signed, so macOS blocks it the first time. Either right-click it in Finder and choose **Open**, or run:
+```bash
+xattr -d com.apple.quarantine nfc-bridge-macos-arm64  # or macos-x64
+```
 
 #### Linux
 ```bash
@@ -178,3 +181,17 @@ npm run release
 ## License
 
 MIT License - Copyright (c) VersaTalent
+
+## Releasing
+
+Binaries are built and published by GitHub Actions (`.github/workflows/release.yml`)
+when a version tag is pushed. Each platform is built on its own runner so the native
+`pcsclite` module is compiled for it, and every binary is smoke-tested before release.
+
+```bash
+git tag v1.0.1
+git push origin v1.0.1
+```
+
+The VersaTalent admin links to `releases/latest/download/<file>`, so keep the file
+names unchanged.

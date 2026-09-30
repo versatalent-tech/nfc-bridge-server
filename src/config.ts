@@ -20,6 +20,19 @@ const DEFAULT_ORIGINS = [
   "https://localhost:3000",
 ];
 
+// Netlify deploy previews and branch deploys of the VersaTalent site
+const DEFAULT_ORIGIN_PATTERNS = [/^https:\/\/[a-z0-9-]+--versatalent\.netlify\.app$/];
+
+/**
+ * Whether a browser origin may use the bridge. Only listed origins can
+ * connect, so other websites open on this computer can't read card UIDs.
+ */
+export function isAllowedOrigin(origin: string | undefined | null): boolean {
+  if (!origin) return false;
+  if (config.allowedOrigins.includes(origin)) return true;
+  return !process.env.NFC_ALLOWED_ORIGINS && DEFAULT_ORIGIN_PATTERNS.some((pattern) => pattern.test(origin));
+}
+
 function findCertificates() {
   const homeDir = process.env.HOME || process.env.USERPROFILE || "";
   const locations = [
