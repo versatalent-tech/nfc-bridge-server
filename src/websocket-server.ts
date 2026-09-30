@@ -26,7 +26,7 @@ export class BridgeServer {
     });
     this.app.use(cors({ origin: (origin, callback) => callback(null, !origin || isAllowedOrigin(origin)) }));
     this.app.use(express.json());
-    this.app.get("/health", (_, res) => res.json({ status: "ok", version: "1.0.1", reader: nfcReader.getInfo(), clients: this.clients.size }));
+    this.app.get("/health", (_, res) => res.json({ status: "ok", version: "1.0.2", reader: nfcReader.getInfo(), clients: this.clients.size }));
     this.app.get("/", (_, res) => res.send(`<h1>NFC Bridge Server</h1><p>Reader: ${nfcReader.getInfo().connected ? nfcReader.getInfo().name : "Not connected"}</p><p>Clients: ${this.clients.size}</p>`));
   }
 
@@ -49,10 +49,14 @@ export class BridgeServer {
       },
     });
     this.wss.on("connection", (ws, req) => this.handleConnection(ws, req.headers.origin || null));
+    // The WebSocket server re-emits the HTTP server's errors; they're handled by listen() below
+    this.wss.on("error", () => {});
     this.setupNFCEvents();
 
-    await new Promise<void>((resolve) => {
+    await new Promise<void>((resolve, reject) => {
+      this.server.once("error", reject);
       this.server.listen(config.port, config.host, () => {
+        this.server.off("error", reject);
         logger.info(`Listening on ${config.sslEnabled ? "wss" : "ws"}://${config.host}:${config.port}`, "WS");
         resolve();
       });

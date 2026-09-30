@@ -7,7 +7,7 @@ import { wsServer } from "./websocket-server";
 
 const BANNER = `
 ╔═══════════════════════════════════════════════════════════════╗
-║                 NFC Bridge Server v1.0.1                      ║
+║                 NFC Bridge Server v1.0.2                      ║
 ║            For VersaTalent Talent Management                  ║
 ╚═══════════════════════════════════════════════════════════════╝
 `;
@@ -30,7 +30,15 @@ async function main() {
     logger.info(`  WebSocket: ${config.sslEnabled ? "wss" : "ws"}://localhost:${config.port}`, "MAIN");
     logger.info(`  Health: http://localhost:${config.port}/health`, "MAIN");
   } catch (err: any) {
-    logger.error(`Failed to start: ${err.message}`, "MAIN");
+    if (err.code === "EADDRINUSE") {
+      logger.error(
+        `The NFC Bridge is already running (port ${config.port} is in use). ` +
+        "Use the window where it's already running, or close it before starting a new one.",
+        "MAIN"
+      );
+    } else {
+      logger.error(`Failed to start: ${err.message}`, "MAIN");
+    }
     process.exit(1);
   }
 }
