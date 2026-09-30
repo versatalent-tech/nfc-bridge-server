@@ -1,6 +1,6 @@
 {
   "name": "nfc-bridge-server",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Local bridge server to connect ACR122U NFC readers to the VersaTalent web application",
   "main": "dist/index.js",
   "scripts": {
@@ -20,7 +20,8 @@
   "pkg": {
     "scripts": "dist/**/*.js",
     "assets": [
-      "certs/.gitkeep"
+      "certs/.gitkeep",
+      "node_modules/@pokusew/pcsclite/build/Release/pcsclite.node"
     ],
     "targets": [
       "node18-win-x64",
