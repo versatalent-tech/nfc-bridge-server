@@ -19,6 +19,7 @@ export class NFCReader extends EventEmitter {
     let pcsclite: any;
     try {
       pcsclite = (await import("@pokusew/pcsclite")).default;
+      logger.info("Card reader module loaded", "NFC");
     } catch (err: any) {
       // Native module missing or built for another platform/Node version
       logger.warn(`pcsclite not available - running in WebSocket-only mode (cards will NOT be read): ${err.message}`, "NFC");
@@ -39,6 +40,7 @@ export class NFCReader extends EventEmitter {
    */
   private connectPCSC(pcsclite: () => any) {
     try {
+      logger.info("Connecting to smart card service...", "NFC");
       this.pcsc = pcsclite();
       logger.info("PC/SC initialized", "NFC");
       this.pcsc.on("reader", (reader: any) => this.handleReader(reader));

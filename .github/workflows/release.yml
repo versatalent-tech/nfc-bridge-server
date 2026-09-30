@@ -52,20 +52,51 @@ jobs:
         shell: bash
         run: npx pkg dist/index.js --targets ${{ matrix.target }} --output releases/${{ matrix.file }}
 
+      # On a real PC the Smart Card service starts when a reader is plugged in;
+      # CI has no reader, so start it explicitly
+      - name: Start Smart Card service (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          Set-Service -Name SCardSvr -StartupType Manual
+          Start-Service -Name SCardSvr
+          Get-Service -Name SCardSvr | Format-List Name, Status, StartType
+
       - name: Smoke test
         shell: bash
+        timeout-minutes: 5
         run: |
           ./releases/${{ matrix.file }} > bridge.log 2>&1 &
+          BRIDGE_PID=$!
+          # Always stop the bridge; on Windows a leftover background process keeps the step open
+          cleanup() {
+            kill $BRIDGE_PID 2>/dev/null || true
+            if [ "$RUNNER_OS" = "Windows" ]; then taskkill //F //IM ${{ matrix.file }} > /dev/null 2>&1 || true; fi
+          }
+          trap cleanup EXIT
+
           for i in $(seq 1 30); do
-            curl -sf http://localhost:9876/health && break
+            curl -sf --max-time 3 http://localhost:9876/health > /dev/null && break
             sleep 1
           done
-          cat bridge.log
-          curl -sf http://localhost:9876/health > /dev/null || { echo "Bridge did not answer /health"; exit 1; }
+          # Wait for the reader process to report whether the native module loaded
+          for i in $(seq 1 20); do
+            grep -qE "Card reader module loaded|WebSocket-only mode" bridge.log && break
+            sleep 1
+          done
+          sleep 3
+          echo "----- bridge.log -----"; cat bridge.log; echo "----------------------"
+
+          curl -sf --max-time 5 http://localhost:9876/health || { echo "Bridge did not answer /health"; exit 1; }
           if grep -q "WebSocket-only mode" bridge.log; then
             echo "Native pcsclite module failed to load - cards would not be read"
             exit 1
           fi
+          grep -q "Card reader module loaded" bridge.log || { echo "Card reader module never loaded"; exit 1; }
+          # The server must keep answering while the reader process talks to PC/SC
+          # (on Windows without a reader that call blocks; it runs in its own process)
+          curl -sf --max-time 5 http://localhost:9876/health > /dev/null || { echo "Bridge stopped answering after reader startup"; exit 1; }
 
       - uses: actions/upload-artifact@v4
         with:

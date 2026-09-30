@@ -6,7 +6,7 @@ import express from "express";
 import cors from "cors";
 import { config, isAllowedOrigin } from "./config";
 import { logger } from "./logger";
-import { nfcReader } from "./nfc-reader";
+import { nfcReader } from "./reader-host";
 
 interface Client { id: string; ws: WebSocket; isScanning: boolean; }
 

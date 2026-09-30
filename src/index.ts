@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 import { config } from "./config";
 import { logger } from "./logger";
-import { nfcReader } from "./nfc-reader";
+import { nfcReader } from "./reader-host";
+import { runReaderProcess } from "./reader-process";
 import { wsServer } from "./websocket-server";
 
 const BANNER = `
@@ -18,10 +19,14 @@ async function main() {
   try {
     // Without a listener, a PC/SC error (e.g. smart card service not running) would crash the process
     nfcReader.on("error", (err: Error) => logger.error(`Reader error: ${err.message}`, "NFC"));
-    await nfcReader.initialize();
     nfcReader.on("cardInserted", (uid) => logger.info(`Card: ${uid}`, "NFC"));
+
+    // Start the server first so the web app can always reach the bridge,
+    // even if the smart card system is slow or misbehaving
     await wsServer.start();
     logger.info("Server running!", "MAIN");
+    logger.info("Loading card reader support...", "NFC");
+    await nfcReader.initialize();
     logger.info(`  WebSocket: ${config.sslEnabled ? "wss" : "ws"}://localhost:${config.port}`, "MAIN");
     logger.info(`  Health: http://localhost:${config.port}/health`, "MAIN");
   } catch (err: any) {
@@ -40,4 +45,8 @@ async function shutdown(signal: string) {
 process.on("SIGINT", () => shutdown("SIGINT"));
 process.on("SIGTERM", () => shutdown("SIGTERM"));
 
-main().catch(console.error);
+if (process.argv.includes("--reader-process")) {
+  runReaderProcess().catch(console.error);
+} else {
+  main().catch(console.error);
+}
