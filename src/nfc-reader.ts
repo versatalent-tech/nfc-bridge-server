@@ -24,8 +24,8 @@ export class NFCReader extends EventEmitter {
       this.isInitialized = true;
       this.emit("ready");
     } catch (err: any) {
-      if (err.message?.includes("Cannot find module") || err.message?.includes("bindings")) {
-        logger.warn("pcsclite not available - running in WebSocket-only mode", "NFC");
+      if (err.message?.includes("Cannot find module") || err.message?.includes("bindings") || err.message?.includes("NODE_MODULE_VERSION")) {
+        logger.warn(`pcsclite not available - running in WebSocket-only mode (cards will NOT be read): ${err.message}`, "NFC");
         this.isInitialized = true;
         this.emit("ready");
         return;

@@ -4,7 +4,7 @@ import { createServer as createHttpsServer } from "https";
 import { readFileSync, existsSync } from "fs";
 import express from "express";
 import cors from "cors";
-import { config } from "./config";
+import { config, isAllowedOrigin } from "./config";
 import { logger } from "./logger";
 import { nfcReader } from "./nfc-reader";
 
@@ -17,7 +17,14 @@ export class BridgeServer {
   private app = express();
 
   constructor() {
-    this.app.use(cors({ origin: config.allowedOrigins }));
+    // Chrome's Private/Local Network Access: allow public sites to reach localhost
+    this.app.use((req, res, next) => {
+      if (req.headers["access-control-request-private-network"]) {
+        res.setHeader("Access-Control-Allow-Private-Network", "true");
+      }
+      next();
+    });
+    this.app.use(cors({ origin: (origin, callback) => callback(null, !origin || isAllowedOrigin(origin)) }));
     this.app.use(express.json());
     this.app.get("/health", (_, res) => res.json({ status: "ok", version: "1.0.0", reader: nfcReader.getInfo(), clients: this.clients.size }));
     this.app.get("/", (_, res) => res.send(`<h1>NFC Bridge Server</h1><p>Reader: ${nfcReader.getInfo().connected ? nfcReader.getInfo().name : "Not connected"}</p><p>Clients: ${this.clients.size}</p>`));
@@ -32,7 +39,15 @@ export class BridgeServer {
       logger.info("Starting server (WS)", "WS");
     }
 
-    this.wss = new WebSocketServer({ server: this.server });
+    this.wss = new WebSocketServer({
+      server: this.server,
+      // Reject browsers on other websites: any page could otherwise connect and read card UIDs
+      verifyClient: ({ origin }: { origin: string }) => {
+        const allowed = isAllowedOrigin(origin);
+        if (!allowed) logger.warn(`Rejected connection from origin: ${origin || "(none)"}`, "WS");
+        return allowed;
+      },
+    });
     this.wss.on("connection", (ws, req) => this.handleConnection(ws, req.headers.origin || null));
     this.setupNFCEvents();
 
@@ -49,12 +64,12 @@ export class BridgeServer {
     const client: Client = { id, ws, isScanning: false };
     this.clients.set(id, client);
     logger.info(`Client connected: ${id}`, "WS");
-    this.send(client, { type: "connected", clientId: id, reader: nfcReader.getInfo() });
+    this.send(client, { type: "connected", clientId: id, reader: nfcReader.getInfo(), deviceName: nfcReader.getInfo().name });
 
     ws.on("message", (data) => {
       try {
         const msg = JSON.parse(String(data));
-        if (msg.type === "getDeviceInfo") this.send(client, { type: "deviceInfo", ...nfcReader.getInfo() });
+        if (msg.type === "getDeviceInfo") this.send(client, { type: "deviceInfo", ...nfcReader.getInfo(), deviceName: nfcReader.getInfo().name });
         else if (msg.type === "startScanning") { client.isScanning = true; this.send(client, { type: "scanningStarted" }); }
         else if (msg.type === "stopScanning") { client.isScanning = false; this.send(client, { type: "scanningStopped" }); }
       } catch {}
