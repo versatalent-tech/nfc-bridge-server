@@ -36,6 +36,9 @@ Download the appropriate executable for your operating system from the [releases
   sudo systemctl start pcscd
   sudo systemctl enable pcscd
   ```
+- If the bridge logs `Access denied (0x8010006a)`, pcscd's polkit policy is blocking a
+  non-desktop session (e.g. SSH or a service). Run the bridge from a desktop session, or
+  as a user allowed by polkit.
 
 ### 3. Run the Server
 
