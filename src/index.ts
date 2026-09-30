@@ -16,6 +16,8 @@ async function main() {
   logger.info(`Port: ${config.port}, SSL: ${config.sslEnabled}`, "MAIN");
 
   try {
+    // Without a listener, a PC/SC error (e.g. smart card service not running) would crash the process
+    nfcReader.on("error", (err: Error) => logger.error(`Reader error: ${err.message}`, "NFC"));
     await nfcReader.initialize();
     nfcReader.on("cardInserted", (uid) => logger.info(`Card: ${uid}`, "NFC"));
     await wsServer.start();
