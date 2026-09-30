@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 import { config } from "./config";
 import { logger } from "./logger";
-import { nfcReader } from "./nfc-reader";
+import { nfcReader } from "./reader-host";
+import { runReaderProcess } from "./reader-process";
 import { wsServer } from "./websocket-server";
 
 const BANNER = `
@@ -44,4 +45,8 @@ async function shutdown(signal: string) {
 process.on("SIGINT", () => shutdown("SIGINT"));
 process.on("SIGTERM", () => shutdown("SIGTERM"));
 
-main().catch(console.error);
+if (process.argv.includes("--reader-process")) {
+  runReaderProcess().catch(console.error);
+} else {
+  main().catch(console.error);
+}
