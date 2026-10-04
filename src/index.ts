@@ -7,7 +7,7 @@ import { wsServer } from "./websocket-server";
 
 const BANNER = `
 ╔═══════════════════════════════════════════════════════════════╗
-║                 NFC Bridge Server v1.0.2                      ║
+║                 NFC Bridge Server v1.1.0                      ║
 ║            For VersaTalent Talent Management                  ║
 ╚═══════════════════════════════════════════════════════════════╝
 `;

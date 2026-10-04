@@ -1,7 +1,15 @@
 import { EventEmitter } from "events";
 import { logger } from "./logger";
+import { buildUrlTlv, padToPages, MAX_URL_LENGTH } from "./ndef";
 
 const APDU_GET_UID = Buffer.from([0xff, 0xca, 0x00, 0x00, 0x00]);
+
+// NTAG21x layout: capability container in page 3, user data from page 4
+const CC_PAGE = 3;
+const DATA_START_PAGE = 4;
+
+/** An error whose message can be shown to the person at the reader */
+export class CardWriteError extends Error {}
 
 export class NFCReader extends EventEmitter {
   private pcsc: any = null;
@@ -99,6 +107,98 @@ export class NFCReader extends EventEmitter {
         this.reader.disconnect(this.reader.SCARD_LEAVE_CARD, () => {});
       });
     });
+  }
+
+  /**
+   * Write a web address to the card on the reader so phones open it when
+   * they tap the card. Only NFC Forum Type 2 cards (NTAG213/215/216) are
+   * supported. When expectedUid is given, the card on the reader must have
+   * that UID, so the address can't end up on the wrong card.
+   */
+  async writeUrl(url: string, expectedUid?: string): Promise<{ uid: string; bytes: number; capacity: number }> {
+    if (!/^https?:\/\//.test(url) || url.length > MAX_URL_LENGTH) {
+      throw new CardWriteError("Invalid address");
+    }
+    if (!this.reader) throw new CardWriteError("No card reader connected");
+    if (!this.cardPresent) throw new CardWriteError("Place the card on the reader");
+
+    const protocol = await this.connect();
+    try {
+      const uid = (await this.command(protocol, APDU_GET_UID)).toString("hex").toUpperCase();
+      if (expectedUid && uid !== expectedUid.toUpperCase()) {
+        throw new CardWriteError(`The card on the reader (${uid}) isn't the one being set up (${expectedUid.toUpperCase()})`);
+      }
+
+      let cc: Buffer;
+      try {
+        cc = (await this.readPages(protocol, CC_PAGE)).subarray(0, 4);
+      } catch {
+        throw new CardWriteError("This card type isn't supported. Use NTAG213, NTAG215 or NTAG216 cards.");
+      }
+      if (cc[0] !== 0xe1) {
+        throw new CardWriteError("This card isn't formatted for NFC addresses. Use NTAG213, NTAG215 or NTAG216 cards.");
+      }
+      if ((cc[3] & 0x0f) !== 0x00) {
+        throw new CardWriteError("This card is locked and can't be written");
+      }
+
+      const capacity = cc[2] * 8;
+      const data = padToPages(buildUrlTlv(url));
+      if (data.length > capacity) {
+        throw new CardWriteError(`The address is too long for this card (${data.length} of ${capacity} bytes)`);
+      }
+
+      for (let offset = 0; offset < data.length; offset += 4) {
+        const page = DATA_START_PAGE + offset / 4;
+        try {
+          await this.command(protocol, Buffer.concat([Buffer.from([0xff, 0xd6, 0x00, page, 0x04]), data.subarray(offset, offset + 4)]));
+        } catch {
+          throw new CardWriteError("Writing failed — keep the card still on the reader and try again. If it keeps failing, the card may be locked.");
+        }
+      }
+
+      // Read back and compare, so a card moved mid-write isn't reported as done
+      const written: Buffer[] = [];
+      for (let page = DATA_START_PAGE; page < DATA_START_PAGE + data.length / 4; page += 4) {
+        written.push(await this.readPages(protocol, page));
+      }
+      if (!Buffer.concat(written).subarray(0, data.length).equals(data)) {
+        throw new CardWriteError("The card didn't save the address correctly — try again");
+      }
+
+      logger.info(`Wrote ${url} to card ${uid}`, "NFC");
+      return { uid, bytes: data.length, capacity };
+    } finally {
+      this.reader?.disconnect(this.reader.SCARD_LEAVE_CARD, () => {});
+    }
+  }
+
+  private connect(): Promise<number> {
+    return new Promise((resolve, reject) => {
+      this.reader.connect({ share_mode: this.reader.SCARD_SHARE_SHARED }, (err: Error, protocol: number) => {
+        if (err) reject(new CardWriteError("Couldn't connect to the card — place it flat on the reader"));
+        else resolve(protocol);
+      });
+    });
+  }
+
+  /** Send an APDU; resolves with the response data when the status is 90 00 */
+  private command(protocol: number, apdu: Buffer): Promise<Buffer> {
+    return new Promise((resolve, reject) => {
+      this.reader.transmit(apdu, 255, protocol, (err: Error, data: Buffer) => {
+        if (err) return reject(err);
+        const status = data.length >= 2 ? (data[data.length - 2] << 8) | data[data.length - 1] : 0;
+        if (status !== 0x9000) return reject(new Error(`Card returned status ${status.toString(16)}`));
+        resolve(data.subarray(0, -2));
+      });
+    });
+  }
+
+  /** READ BINARY returns 4 pages (16 bytes) starting at the given page */
+  private async readPages(protocol: number, page: number): Promise<Buffer> {
+    const data = await this.command(protocol, Buffer.from([0xff, 0xb0, 0x00, page, 0x10]));
+    if (data.length < 16) throw new Error("Short read");
+    return data;
   }
 
   getInfo() {

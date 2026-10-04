@@ -10,6 +10,10 @@ import { nfcReader } from "./reader-host";
 
 interface Client { id: string; ws: WebSocket; isScanning: boolean; }
 
+export const VERSION = "1.1.0";
+// Lets the web app tell whether this bridge can do something before asking
+const FEATURES = ["writeUrl"];
+
 export class BridgeServer {
   private server: any = null;
   private wss: WebSocketServer | null = null;
@@ -26,7 +30,7 @@ export class BridgeServer {
     });
     this.app.use(cors({ origin: (origin, callback) => callback(null, !origin || isAllowedOrigin(origin)) }));
     this.app.use(express.json());
-    this.app.get("/health", (_, res) => res.json({ status: "ok", version: "1.0.2", reader: nfcReader.getInfo(), clients: this.clients.size }));
+    this.app.get("/health", (_, res) => res.json({ status: "ok", version: VERSION, features: FEATURES, reader: nfcReader.getInfo(), clients: this.clients.size }));
     this.app.get("/", (_, res) => res.send(`<h1>NFC Bridge Server</h1><p>Reader: ${nfcReader.getInfo().connected ? nfcReader.getInfo().name : "Not connected"}</p><p>Clients: ${this.clients.size}</p>`));
   }
 
@@ -68,7 +72,7 @@ export class BridgeServer {
     const client: Client = { id, ws, isScanning: false };
     this.clients.set(id, client);
     logger.info(`Client connected: ${id}`, "WS");
-    this.send(client, { type: "connected", clientId: id, reader: nfcReader.getInfo(), deviceName: nfcReader.getInfo().name });
+    this.send(client, { type: "connected", clientId: id, version: VERSION, features: FEATURES, reader: nfcReader.getInfo(), deviceName: nfcReader.getInfo().name });
 
     ws.on("message", (data) => {
       try {
@@ -76,6 +80,14 @@ export class BridgeServer {
         if (msg.type === "getDeviceInfo") this.send(client, { type: "deviceInfo", ...nfcReader.getInfo(), deviceName: nfcReader.getInfo().name });
         else if (msg.type === "startScanning") { client.isScanning = true; this.send(client, { type: "scanningStarted" }); }
         else if (msg.type === "stopScanning") { client.isScanning = false; this.send(client, { type: "scanningStopped" }); }
+        else if (msg.type === "writeUrl") {
+          const requestId = msg.requestId ?? null;
+          if (typeof msg.url !== "string" || (msg.uid !== undefined && typeof msg.uid !== "string")) {
+            this.send(client, { type: "writeResult", requestId, ok: false, error: "Invalid write request" });
+          } else {
+            nfcReader.writeUrl(msg.url, msg.uid).then((result) => this.send(client, { type: "writeResult", requestId, ...result }));
+          }
+        }
       } catch {}
     });
 
