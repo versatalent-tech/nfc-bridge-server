@@ -74,6 +74,7 @@ chmod +x nfc-bridge-linux-x64
 - **WebSocket Server**: Connects to VersaTalent web app via WebSocket
 - **Auto-detection**: Automatically detects when NFC reader is plugged in
 - **Card Reading**: Reads NFC card UIDs when cards are tapped
+- **Card Writing**: Writes a web address to NTAG213/215/216 cards, so phones open it when they tap the card
 - **CORS Support**: Allows connections from authorized web origins
 - **SSL Support**: Optional HTTPS/WSS for secure connections
 
@@ -127,15 +128,20 @@ Place certificates in one of these locations:
 {"type": "getDeviceInfo"}
 {"type": "startScanning"}
 {"type": "stopScanning"}
+{"type": "writeUrl", "requestId": "1", "url": "https://example.com/nfc/04AABBCCDD", "uid": "04AABBCCDD"}
 ```
+
+`writeUrl` writes the address to the card on the reader as an NDEF URI record (NTAG213/215/216 only), then reads it back to check it. `uid` is optional; when given, the write is refused unless that card is the one on the reader.
 
 **Server to Client:**
 ```json
-{"type": "connected", "clientId": "abc123", "reader": {...}}
+{"type": "connected", "clientId": "abc123", "version": "1.1.0", "features": ["writeUrl"], "reader": {...}}
 {"type": "cardScanned", "uid": "04AABBCCDD", "atr": "...", "timestamp": 1234567890}
 {"type": "cardRemoved"}
 {"type": "readerConnected", "deviceName": "ACR122U"}
 {"type": "readerDisconnected", "deviceName": "ACR122U"}
+{"type": "writeResult", "requestId": "1", "ok": true, "uid": "04AABBCCDD", "bytes": 52, "capacity": 144}
+{"type": "writeResult", "requestId": "1", "ok": false, "error": "Place the card on the reader"}
 ```
 
 ### HTTP Endpoints

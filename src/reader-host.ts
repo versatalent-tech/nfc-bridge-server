@@ -6,9 +6,15 @@
 import { EventEmitter } from "events";
 import { fork, ChildProcess } from "child_process";
 import { logger } from "./logger";
-import type { ReaderMessage } from "./reader-process";
+import type { ReaderMessage, ReaderRequest } from "./reader-process";
 
 const RESTART_DELAY_MS = 5000;
+// Writing a URL takes well under a second; this only guards a stuck reader
+const WRITE_TIMEOUT_MS = 15000;
+
+export type WriteResult =
+  | { ok: true; uid: string; bytes: number; capacity: number }
+  | { ok: false; error: string };
 
 class ReaderHost extends EventEmitter {
   private child: ChildProcess | null = null;
@@ -16,6 +22,8 @@ class ReaderHost extends EventEmitter {
   private readerName: string | null = null;
   private cardPresent = false;
   private lastUID: string | null = null;
+  private pendingWrites = new Map<string, (result: WriteResult) => void>();
+  private nextRequestId = 1;
 
   async initialize(): Promise<void> {
     this.start();
@@ -32,6 +40,7 @@ class ReaderHost extends EventEmitter {
     this.child.on("message", (message: ReaderMessage) => this.handleMessage(message));
     this.child.on("exit", (code) => {
       this.child = null;
+      this.failPendingWrites("The card reader restarted — try again");
       this.readerName = null;
       this.cardPresent = false;
       if (this.stopping) return;
@@ -64,7 +73,43 @@ class ReaderHost extends EventEmitter {
       case "error":
         this.emit("error", new Error(message.message));
         break;
+      case "writeResult": {
+        const resolve = this.pendingWrites.get(message.requestId);
+        if (!resolve) break;
+        this.pendingWrites.delete(message.requestId);
+        const { type, requestId, ...result } = message;
+        resolve(result);
+        break;
+      }
     }
+  }
+
+  /** Write a web address to the card on the reader (see NFCReader.writeUrl) */
+  writeUrl(url: string, uid?: string): Promise<WriteResult> {
+    if (!this.child?.connected) {
+      return Promise.resolve({ ok: false, error: "The card reader isn't ready yet — try again in a moment" });
+    }
+    if (this.pendingWrites.size > 0) {
+      return Promise.resolve({ ok: false, error: "Another card is being written — wait a moment" });
+    }
+    const requestId = String(this.nextRequestId++);
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        this.pendingWrites.delete(requestId);
+        resolve({ ok: false, error: "The card reader didn't respond — try again" });
+      }, WRITE_TIMEOUT_MS);
+      this.pendingWrites.set(requestId, (result) => {
+        clearTimeout(timer);
+        resolve(result);
+      });
+      const request: ReaderRequest = { type: "writeUrl", requestId, url, uid };
+      this.child!.send(request);
+    });
+  }
+
+  private failPendingWrites(error: string) {
+    for (const resolve of this.pendingWrites.values()) resolve({ ok: false, error });
+    this.pendingWrites.clear();
   }
 
   getInfo() {
